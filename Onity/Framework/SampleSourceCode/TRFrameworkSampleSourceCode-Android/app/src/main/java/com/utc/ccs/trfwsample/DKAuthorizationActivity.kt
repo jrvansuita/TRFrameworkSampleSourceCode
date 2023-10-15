@@ -1,91 +1,64 @@
-package com.utc.ccs.trfwsample;
+package com.utc.ccs.trfwsample
 
-import android.content.Intent;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
-import android.os.Bundle;
-import android.text.Editable;
-import android.text.TextWatcher;
-import android.util.Log;
-import android.view.View;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ProgressBar;
-import android.widget.TextView;
-import android.widget.Toast;
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ProgressBar
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 
-import androidx.appcompat.app.AppCompatActivity;
+class DKAuthorizationActivity : AppCompatActivity() {
+	private lateinit var authCodeEntry: EditText
+	private lateinit var dnsEntry: EditText
+	private lateinit var loginButton: Button
+	private lateinit var progressBar: ProgressBar
 
-import com.utc.fs.trframework.TRError;
+	override fun onCreate(savedInstanceState: Bundle?) {
+		super.onCreate(savedInstanceState)
+		setContentView(R.layout.activity_authorization)
 
-public class DKAuthorizationActivity extends AppCompatActivity {
-    private static String ACTIVITY_TAG = "AUTHORIZATION_ACTIVITY";
+		progressBar = findViewById(R.id.progressBar)
+		progressBar.visibility = View.GONE
 
-    private EditText authCodeEntry;
-    private EditText dnsEntry;
-    private Button loginButton;
-    private ProgressBar progressBar;
+		authCodeEntry = findViewById(R.id.auth_entry)
+		dnsEntry = findViewById(R.id.dns_entry)
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_authorization);
+		loginButton = findViewById(R.id.login_button)
+		loginButton.setOnClickListener { loginClicked() }
+	}
 
-        progressBar = (ProgressBar) findViewById(R.id.progressBar);
-        progressBar.setVisibility(View.GONE);
+	private fun loginClicked() {
+		disableUi()
 
-        authCodeEntry = (EditText) findViewById(R.id.auth_entry);
+		DKFramework.authorize(dnsEntry.text.toString(), authCodeEntry.text.toString()) { trError ->
+			enableUi()
 
-        dnsEntry = (EditText) findViewById(R.id.dns_entry);
+			if (trError != null) {
+				trError.errorMessage?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
+			} else {
+				val intent = Intent(applicationContext, DKMainActivity::class.java)
+				intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+				startActivity(intent)
+			}
+		}
+	}
 
-        loginButton = (Button) findViewById(R.id.login_button);
-        loginButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                loginClicked();
-            }
-        });
+	private fun disableUi() {
+		progressBar.visibility = View.VISIBLE
+		authCodeEntry.isEnabled = false
+		dnsEntry.isEnabled = false
+		loginButton.text = getString(R.string.logging_in)
+		loginButton.isEnabled = false
+	}
 
-    }
+	private fun enableUi() {
+		progressBar.visibility = View.GONE
+		authCodeEntry.isEnabled = true
+		dnsEntry.isEnabled = true
+		loginButton.text = getString(R.string.login)
+		loginButton.isEnabled = true
+	}
 
-    private void loginClicked() {
-        disableUi();
-
-        DKFramework.authorize(
-                dnsEntry.getText().toString(),
-                authCodeEntry.getText().toString(),
-                new DKFramework.ErrorDelegate() {
-                    @Override
-                    public void onComplete(TRError trError) {
-                        enableUi();
-
-                        if (trError != null) {
-                            Log.d(ACTIVITY_TAG, "Authorize Error: " + trError.getErrorMessage());
-
-                            Toast.makeText(DKAuthorizationActivity.this, trError.getErrorMessage(), Toast.LENGTH_LONG).show();
-                        } else {
-                            Intent intent = new Intent(getApplicationContext(), DKMainActivity.class);
-                            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                            startActivity(intent);
-                        }
-                    }
-                });
-    }
-
-
-    private void disableUi() {
-        progressBar.setVisibility(View.VISIBLE);
-        authCodeEntry.setEnabled(false);
-        dnsEntry.setEnabled(false);
-        loginButton.setText(getString(R.string.logging_in));
-        loginButton.setEnabled(false);
-    }
-
-    private void enableUi() {
-        progressBar.setVisibility(View.GONE);
-        authCodeEntry.setEnabled(true);
-        dnsEntry.setEnabled(true);
-        loginButton.setText(getString(R.string.login));
-        loginButton.setEnabled(true);
-    }
 }

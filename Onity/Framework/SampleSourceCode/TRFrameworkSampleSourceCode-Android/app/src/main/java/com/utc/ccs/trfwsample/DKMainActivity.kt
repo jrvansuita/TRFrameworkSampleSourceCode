@@ -1,220 +1,172 @@
-package com.utc.ccs.trfwsample;
+package com.utc.ccs.trfwsample
 
-import android.content.Context;
-import android.content.Intent;
-import android.os.Bundle;
-import android.util.Log;
-import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
-import android.widget.ImageButton;
-import android.widget.ListView;
-import android.widget.ProgressBar;
-import android.widget.TextView;
-import android.widget.Toast;
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.util.Log
+import android.view.View
+import android.widget.AdapterView.OnItemClickListener
+import android.widget.ArrayAdapter
+import android.widget.ImageButton
+import android.widget.ListView
+import android.widget.ProgressBar
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.utc.fs.trframework.TRDevice
+import com.utc.fs.trframework.TRError
+import com.utc.fs.trframework.TRFrameworkError
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.appcompat.app.ActionBar;
-import androidx.appcompat.app.AppCompatActivity;
+class DKMainActivity : AppCompatActivity() {
+	private var nearbyDevices = ArrayList<TRDevice>()
+	private lateinit var listView: ListView
+	private lateinit var progressBar: ProgressBar
+	private lateinit var operationText: TextView
 
-import com.utc.fs.trframework.TRDevice;
-import com.utc.fs.trframework.TRError;
-import com.utc.fs.trframework.TRFramework;
-import com.utc.fs.trframework.TRFrameworkError;
+	override fun onCreate(savedInstanceState: Bundle?) {
+		super.onCreate(savedInstanceState)
+		setContentView(R.layout.activity_main)
 
-import java.util.ArrayList;
+		listView = findViewById(R.id.list_view)
+		listView.setOnItemClickListener { _, _, i, _ -> handleRowTapped(i) }
 
+		progressBar = findViewById(R.id.scan_spinner)
+		operationText = findViewById(R.id.operation_txt)
 
-public class DKMainActivity extends AppCompatActivity {
-    public static final int RESULT_LOGGED_OUT = 2;
+		val settings = findViewById<ImageButton>(R.id.settings_button)
+		settings.setOnClickListener {
+			val intent = Intent(applicationContext, DKSettingsActivity::class.java)
+			startActivityForResult(intent, SETTINGS_REQUEST_CODE)
+		}
+		if (!DKFramework.hasAuthorizedWithServer()) {
+			goToAuthorizationScreen()
+		}
+	}
 
-    private static String LOG_TAG = "MAIN_ACTIVITY";
+	override fun onPause() {
+		super.onPause()
+		stopScanning()
+	}
 
-    private static int SETTINGS_REQUEST_CODE = 0;
-    private ArrayList<TRDevice> nearbyDevices = new ArrayList<>();
+	override fun onResume() {
+		super.onResume()
+		startScanning()
+	}
 
-    private ListView listView;
-    private ProgressBar progressBar;
-    private TextView operationText;
+	public override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+		if (requestCode == SETTINGS_REQUEST_CODE && resultCode == RESULT_LOGGED_OUT) {
+			goToAuthorizationScreen()
+			return
+		}
+		super.onActivityResult(requestCode, resultCode, data)
+	}
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+	private fun goToAuthorizationScreen() {
+		val intent = Intent(applicationContext, DKAuthorizationActivity::class.java)
+		intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+		startActivity(intent)
+	}
 
-        listView = (ListView) findViewById(R.id.list_view);
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
-                handleRowTapped(i);
-            }
-        });
+	private fun handleRowTapped(row: Int) {
+		val device = nearbyDevices[row]
+		stopScanning()
+		showProgressWithText(getString(R.string.opening))
+		DKFramework.openDevice(device) { error: TRError? ->
+			hideProgress()
+			if (error == null) {
+				Toast.makeText(this, "Open success!", Toast.LENGTH_LONG).show()
+			} else {
+				Toast.makeText(this, error.errorMessage, Toast.LENGTH_LONG).show()
+			}
+			startScanning()
+		}
+	}
 
-        progressBar = (ProgressBar) findViewById(R.id.scan_spinner);
-        progressBar.setVisibility(View.GONE);
+	private fun updateUi() {
+		val arrayAdapter = ArrayAdapter(
+			this,
+			android.R.layout.simple_list_item_1,
+			getRowTitlesFromDeviceList(nearbyDevices)
+		)
+		listView.adapter = arrayAdapter
+	}
 
-        operationText = (TextView) findViewById(R.id.operation_txt);
-        operationText.setText("");
+	private fun startScanning() {
+		if (!DKFramework.sharedFramework().isBTLESupported) {
+			Toast.makeText(this, "BTLE is not supported on this device.", Toast.LENGTH_LONG).show()
+			return
+		}
+		showProgressWithText(getString(R.string.scanning))
+		DKFramework.startScanning(
+			{ handleScanStarted() },
+			{ handleScanEnded() },
+			{ error: TRError? -> handleScanError(error) }
+		) { list: ArrayList<TRDevice> -> handleDevicesReturned(list) }
+	}
 
-        ImageButton settings = (ImageButton) findViewById(R.id.settings_button);
-        settings.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Intent intent = new Intent(getApplicationContext(), DKSettingsActivity.class);
-                startActivityForResult(intent, SETTINGS_REQUEST_CODE);
-            }
-        });
+	private fun handleScanStarted() {
+		Log.d(LOG_TAG, "Scanning started")
+	}
 
-        if (!DKFramework.hasAuthorizedWithServer()) {
-            goToAuthorizationScreen();
-        }
-    }
+	private fun handleScanEnded() {
+		Log.d(LOG_TAG, "Scanning ended")
+		hideProgress()
+	}
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        stopScanning();
-    }
+	private fun handleScanError(error: TRError?) {
+		Log.d(LOG_TAG, "Scan error: " + error!!.errorMessage)
+		hideProgress()
+		if (error.errorCode == TRFrameworkError.TRFrameworkErrorDiscoveryCancelled) {
+			Log.d(LOG_TAG, "Discovery cancelled error, ignoring it")
+			return
+		}
+		if (error.errorCode == TRFrameworkError.TRFrameworkErrorInsufficientLocationPermissions) {
+			Log.e(LOG_TAG, "TRFrameworkError.TRFrameworkErrorInsufficientLocationPermissions")
+		}
+	}
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        startScanning();
-    }
+	private fun handleDevicesReturned(devices: ArrayList<TRDevice>) {
+		nearbyDevices = devices
+		updateUi()
+	}
 
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == SETTINGS_REQUEST_CODE && resultCode == RESULT_LOGGED_OUT) {
-            goToAuthorizationScreen();
-            return;
-        }
+	private fun stopScanning() {
+		DKFramework.stopScanning()
+		hideProgress()
+	}
 
-        super.onActivityResult(requestCode, resultCode, data);
-    }
+	// Extra Helper methods
+	private fun getRowTitlesFromDeviceList(devices: ArrayList<TRDevice>): ArrayList<String> {
+		val serials = ArrayList<String>()
+		for (device in devices) {
+			serials.add(rowTitleFromDevice(device))
+		}
+		return serials
+	}
 
-    private void goToAuthorizationScreen() {
-        Intent intent = new Intent(getApplicationContext(), DKAuthorizationActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        startActivity(intent);
-    }
+	private fun rowTitleFromDevice(device: TRDevice): String {
+		val name = device.deviceName
+		val serial = device.serialNumber
+		return if (name.isNotEmpty()) {
+			"$name - $serial"
+		} else {
+			serial
+		}
+	}
 
-    private void handleRowTapped(int row) {
-        final TRDevice device = nearbyDevices.get(row);
+	private fun showProgressWithText(text: String) {
+		progressBar.visibility = View.VISIBLE
+		operationText.text = text
+	}
 
-        final Context ctx = this;
+	private fun hideProgress() {
+		progressBar.visibility = View.GONE
+		operationText.text = ""
+	}
 
-        stopScanning();
-
-        showProgressWithText(getString(R.string.opening));
-
-        DKFramework.openDevice(device, error -> {
-            hideProgress();
-
-            if (error == null) {
-                Toast.makeText(DKMainActivity.this, "Open succes!", Toast.LENGTH_LONG).show();
-            } else {
-                Toast.makeText(DKMainActivity.this, error.getErrorMessage(), Toast.LENGTH_LONG).show();
-            }
-
-            startScanning();
-        });
-    }
-
-    private void updateUi() {
-        ArrayAdapter<String> arrayAdapter = new ArrayAdapter<>(
-                this,
-                android.R.layout.simple_list_item_1,
-                getRowTitlesFromDeviceList(nearbyDevices));
-
-        listView.setAdapter(arrayAdapter);
-    }
-
-    private void startScanning() {
-        if (!DKFramework.sharedFramework().isBTLESupported()) {
-            Toast.makeText(DKMainActivity.this, "BTLE is not supported on this device.", Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        showProgressWithText(getString(R.string.scanning));
-
-        DKFramework.startScanning(
-                () -> handleScanStarted(),
-                () -> handleScanEnded(),
-                error -> handleScanError(error),
-                list -> handleDevicesReturned(list)
-        );
-    }
-
-    private void handleScanStarted() {
-        Log.d(LOG_TAG, "Scanning started");
-    }
-
-    private void handleScanEnded() {
-        Log.d(LOG_TAG, "Scanning ended");
-        hideProgress();
-    }
-
-    private void handleScanError(TRError error) {
-        Log.d(LOG_TAG, "Scan error: " + error.getErrorMessage());
-        hideProgress();
-
-        if (error.getErrorCode() == TRFrameworkError.TRFrameworkErrorDiscoveryCancelled) {
-            Log.d(LOG_TAG, "Discovery cancelled error, ignoring it");
-            return;
-        }
-
-        if (error.getErrorCode() == TRFrameworkError.TRFrameworkErrorInsufficientLocationPermissions) {
-            DKPermissionResolver.resolveFrameworkScanningErrors(this, error);
-        }
-    }
-
-    private void handleDevicesReturned(ArrayList<TRDevice> devices) {
-        nearbyDevices = devices;
-        updateUi();
-    }
-
-    private void stopScanning() {
-        DKFramework.stopScanning();
-        hideProgress();
-    }
-
-    // Extra Helper methods
-    private ArrayList<String> getRowTitlesFromDeviceList(ArrayList<TRDevice> devices) {
-        ArrayList<String> serials = new ArrayList<>();
-
-        for (TRDevice device : devices) {
-            serials.add(rowTitleFromDevice(device));
-        }
-
-        return serials;
-    }
-
-    private String rowTitleFromDevice(TRDevice device) {
-        String name = device.getDeviceName();
-
-        String serial = device.getSerialNumber();
-
-        if (name != null && !name.equals("")) {
-            return name + " - " + serial;
-        } else {
-            return serial;
-        }
-    }
-
-    private void showProgressWithText(String text) {
-        progressBar.setVisibility(View.VISIBLE);
-        operationText.setText(text);
-    }
-
-    private void hideProgress() {
-        progressBar.setVisibility(View.GONE);
-        operationText.setText("");
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        DKPermissions.handleRequestPermissionsResult(this, requestCode, permissions, grantResults);
-    }
+	companion object {
+		const val RESULT_LOGGED_OUT = 2
+		private const val LOG_TAG = "MAIN_ACTIVITY"
+		private const val SETTINGS_REQUEST_CODE = 0
+	}
 }
