@@ -1,0 +1,33 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="app_name">TRFW Sample</string>
+    <string name="app_title">TRFramework Sample</string>
+
+    <string name="authorization_code">Authorization Code:</string>
+    <string name="dns">DNS:</string>
+    <string name="login">Login</string>
+    <string name="logging_in">Logging in&#8230;</string>
+    <string name="version_format" formatted="true">Version %s</string>
+
+    <string name="key_serial_format" formatted="true">Key Serial:
+        %s</string>
+
+    <string name="sync_dns_format" formatted="true">Sync DNS:
+        %s</string>
+
+    <string name="sync">Sync</string>
+    <string name="syncing">Syncing&#8230;</string>
+
+    <string name="logout">Logout</string>
+    <string name="logging_out" tools:ignore="UnusedResources">Logging out&#8230;</string>
+
+    <string name="trframework_version_format" formatted="true">TRFramework Version %s</string>
+    <string name="sample_version_format" formatted="true">TRFrameworkSample Version %s BETA</string>
+
+    <string name="settings">Settings</string>
+    <string name="back">Back</string>
+
+    <string name="scanning">Scanning&#8230;</string>
+    <string name="opening">Opening&#8230;</string>
+
+
+</resources>
